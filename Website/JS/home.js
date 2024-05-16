@@ -5,6 +5,10 @@ document.addEventListener('DOMContentLoaded', function () {
     monitorButton.addEventListener('click', () => {
         monitorTraffic();
         centerBox.innerHTML = '<p>Sit back and relax...</p>';
+        const container = document.createElement('div');
+        container.classList.add('message-container');
+        container.id = 'message-container';
+        centerBox.appendChild(container);
     });
 
     function monitorTraffic() {
@@ -29,9 +33,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // On Message Received
         socket.onmessage = function (event) {
+            const messageContainer = document.getElementById('message-container');
             console.log('Message from server: ', event.data);
             // Display Message
-            centerBox.innerHTML = `<p>${event.data}</p>`;
+            const newMessage = document.createElement('div');
+            newMessage.classList.add('message');
+            newMessage.textContent = event.data;
+            messageContainer.appendChild(newMessage);
         };
 
         // On Connection Close

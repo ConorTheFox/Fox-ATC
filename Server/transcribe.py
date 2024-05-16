@@ -28,35 +28,50 @@ async def transcribe_and_send(stream_url, websocket):
     while True:
         chunk_path = f"chunks/output{chunk_index:03d}.wav"
 
-        # Use FFmpeg to record the stream for 30 seconds
+        # Use FFmpeg to record the stream for 15 seconds
         print(f"{Fore.BLUE}Recording chunk {chunk_index}...")
         ffmpeg_command = [
-            'ffmpeg', '-y', '-i', stream_url, '-t', '30',
+            'ffmpeg', '-y', '-i', stream_url, '-t', '15',
             '-c', 'copy', chunk_path
         ]
 
-        subprocess.run(ffmpeg_command, stderr=subprocess.STDOUT)
-        print(f"{Fore.BLUE}Chunk {chunk_index} recorded.")
+        try:
+            subprocess.run(ffmpeg_command, stderr=subprocess.STDOUT)
+            print(f"{Fore.BLUE}Chunk {chunk_index} recorded.")
+        except Exception as e:
+            print(f"{Fore.RED}Error recording chunk: {e}")
+            await websocket.send(f"Error recording chunk: {e}")
+            break
 
         # Transcribe the chunk
-        print(f"{Fore.YELLOW}Transcribing chunk: {chunk_path}")
-        result = model.transcribe(chunk_path)
-        transcription = result['text']
-        print(f"{Fore.GREEN}Transcription: {transcription}")
+        try:
+            print(f"{Fore.YELLOW}Transcribing chunk: {chunk_path}")
+            result = model.transcribe(chunk_path)
+            transcription = result['text']
+            print(f"{Fore.GREEN}Transcription: {transcription}")
 
-        # Send the transcription to the client
-        await websocket.send(transcription)
+            # Send the transcription to the client
+            await websocket.send(transcription)
+        except Exception as e:
+            print(f"{Fore.RED}Error transcribing chunk: {e}")
+            await websocket.send(f"Error transcribing chunk: {e}")
+            break
 
         chunk_index += 1
 
 async def handle_client(websocket, path):
-    async for message in websocket:
-        data = json.loads(message)
-        airport_code = data.get('airport_code')
-        frequency = data.get('frequency')
+    print(f"{Fore.GREEN}Client connected")
+    try:
+        async for message in websocket:
+            print(f"{Fore.YELLOW}Received message: {message}")
+            data = json.loads(message)
+            airport_code = data.get('airport_code')
+            frequency = data.get('frequency')
 
-        stream_url = radios[airport_code][frequency]
-        await transcribe_and_send(stream_url, websocket)
+            stream_url = radios[airport_code][frequency]
+            await transcribe_and_send(stream_url, websocket)
+    except websockets.exceptions.ConnectionClosed as e:
+        print(f"{Fore.RED}Connection closed: {e}")
 
 async def main():
     async with websockets.serve(handle_client, "localhost", 3000):
