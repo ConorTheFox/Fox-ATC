@@ -1,21 +1,23 @@
 import whisper
-import sys
 import os
 import subprocess
+import json
+import asyncio
+import websockets
 from colorama import Fore, Style, init
 
 # Initialize colorama
 init(autoreset=True)
 
-def transcribe_chunk(model, chunk_path):
-    print(f"{Fore.YELLOW}Transcribing chunk: {chunk_path}")
-    result = model.transcribe(chunk_path)
-    transcription = result['text']
-    print(f"{Fore.GREEN}Transcription: {transcription}")
-    sys.stdout.flush()  # Ensure the output is immediately flushed
-    return transcription
+radios = {
+    'SAN': {
+        'Ground': 'http://d.liveatc.net/ksan1_gnd',
+        'Tower': 'http://d.liveatc.net/ksan1_twr',
+        'Departure': 'http://d.liveatc.net/ksan_dep_125150',
+    }
+}
 
-def transcribe_audio_from_stream(stream_url):
+async def transcribe_and_send(stream_url, websocket):
     model = whisper.load_model("base")
 
     # Create a directory to store audio chunks
@@ -25,43 +27,41 @@ def transcribe_audio_from_stream(stream_url):
     chunk_index = 0
     while True:
         chunk_path = f"chunks/output{chunk_index:03d}.wav"
-        
+
         # Use FFmpeg to record the stream for 30 seconds
         print(f"{Fore.BLUE}Recording chunk {chunk_index}...")
         ffmpeg_command = [
             'ffmpeg', '-y', '-i', stream_url, '-t', '30',
             '-c', 'copy', chunk_path
         ]
-        
+
         subprocess.run(ffmpeg_command, stderr=subprocess.STDOUT)
         print(f"{Fore.BLUE}Chunk {chunk_index} recorded.")
-        
+
         # Transcribe the chunk
-        transcription = transcribe_chunk(model, chunk_path)
-        
-        # Send the transcription to stdout
-        print(transcription)
-        
+        print(f"{Fore.YELLOW}Transcribing chunk: {chunk_path}")
+        result = model.transcribe(chunk_path)
+        transcription = result['text']
+        print(f"{Fore.GREEN}Transcription: {transcription}")
+
+        # Send the transcription to the client
+        await websocket.send(transcription)
+
         chunk_index += 1
 
-def transcribe_audio_from_file(file_path):
-    if not os.path.exists(file_path):
-        print(f"{Fore.RED}File {file_path} does not exist.")
-        return
-    
-    print(f"{Fore.YELLOW}Transcribing file: {file_path}")
-    model = whisper.load_model("base")
-    result = model.transcribe(file_path)
-    print(f"{Fore.GREEN}Transcription: {result['text']}")
+async def handle_client(websocket, path):
+    async for message in websocket:
+        data = json.loads(message)
+        airport_code = data.get('airport_code')
+        frequency = data.get('frequency')
+
+        stream_url = radios[airport_code][frequency]
+        await transcribe_and_send(stream_url, websocket)
+
+async def main():
+    async with websockets.serve(handle_client, "localhost", 3000):
+        print("WebSocket server running on ws://localhost:3000")
+        await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        if os.path.isfile(arg):
-            # Test mode with local file
-            transcribe_audio_from_file(arg)
-        else:
-            # Live transcription mode with URL
-            transcribe_audio_from_stream(arg)
-    else:
-        print(f"{Fore.RED}Please provide a stream URL or a local file path as an argument.")
+    asyncio.run(main())
