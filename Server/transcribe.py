@@ -13,6 +13,7 @@ def transcribe_chunk(model, chunk_path):
     transcription = result['text']
     print(f"{Fore.GREEN}Transcription: {transcription}")
     sys.stdout.flush()  # Ensure the output is immediately flushed
+    return transcription
 
 def transcribe_audio_from_stream(stream_url):
     model = whisper.load_model("base")
@@ -36,7 +37,10 @@ def transcribe_audio_from_stream(stream_url):
         print(f"{Fore.BLUE}Chunk {chunk_index} recorded.")
         
         # Transcribe the chunk
-        transcribe_chunk(model, chunk_path)
+        transcription = transcribe_chunk(model, chunk_path)
+        
+        # Send the transcription to stdout
+        print(transcription)
         
         chunk_index += 1
 
